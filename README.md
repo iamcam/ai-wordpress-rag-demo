@@ -5,5 +5,5 @@ This small project aims to incorporate your WordPress data into a knowledge base
 # Getting Started
 
 ```
-pip install python-dotenv requests
+pip install python-dotenv requests pandas
 ```
