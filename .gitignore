@@ -1,2 +1,4 @@
+.env
 virtualenv
 .DS_Store
+data
