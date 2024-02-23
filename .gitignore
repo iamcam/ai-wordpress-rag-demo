@@ -2,3 +2,4 @@
 virtualenv
 .DS_Store
 data
+postgres-data
