@@ -1,3 +1,4 @@
+import time
 import warnings
 
 warnings.filterwarnings("ignore", "\nPyarrow", DeprecationWarning)
@@ -12,6 +13,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.document_transformers import Html2TextTransformer
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_community.vectorstores.pgvector import PGVector
+
+from utils import chunk_list
 
 load_dotenv()
 
@@ -27,6 +31,7 @@ if args.limit < 1:
     print("Please specify a post limit of 1 or more")
     exit(1)
 RECORD_LIMIT = args.limit
+
 print("-" * 80)
 print(f"Limiting to {RECORD_LIMIT} records. (Default 1 for your own testing sanity)")
 print("-" * 80)
@@ -61,7 +66,7 @@ df['content'] = df.apply(extract_rendered_content, axis=1)
 
 ## Load Pandas DataFrame into langchain loader
 post_loader = DataFrameLoader(df, page_content_column='content')
-docs = post_loader.load()
+docs = post_loader.load()[:RECORD_LIMIT]
 
 ## transform any html to text
 html2text = Html2TextTransformer()
@@ -79,16 +84,10 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 split_docs = text_splitter.transform_documents(docs_transformed_html)
 
-## Perform embedding (local-only)
-embeddings = HuggingFaceBgeEmbeddings()
-
-# Manual embedding - not needed if using the langchain PGVector connector
-# texts = [doc.page_content for doc in split_docs]
-# doc_embeddings = embeddings.embed_documents(texts[:3])
 
 ## Embedding
+embeddings = HuggingFaceBgeEmbeddings()
 
-from langchain_community.vectorstores.pgvector import PGVector
 
 CONNECTION_STRING = PGVector.connection_string_from_db_params(
     driver="psycopg2",
@@ -107,23 +106,44 @@ if VERBOSE:
     print(f"Creating connection to database with collection_name={COLLECTION_NAME}")
 
 if EMBED:
+    record_count = min(RECORD_LIMIT, len(docs))
+
+    print(f"Importing {record_count} records")
     if VERBOSE:
         start_time = time.time()
         print(f"Begin embeddings and storage.")
-        print(f"Please be patient. This may take some time")
+        print(f"Please be patient. This may take some time...")
+
+    # due to memory constraints, may need to reduce the concurrent embeddings
 
     #https://api.python.langchain.com/en/stable/vectorstores/langchain_community.vectorstores.pgvector.PGVector.html#langchain_community.vectorstores.pgvector.PGVector.create_tables_if_not_exists
     db = PGVector.from_documents(
         embedding=embeddings,
-        documents=docs[:(min(RECORD_LIMIT, len(docs)))],
+        documents = [], # Will load in batches below for status
         collection_name=COLLECTION_NAME,
         connection_string=CONNECTION_STRING,
         pre_delete_collection=EMBED,
     )
 
+
+    # number of docs to chunk at a time. helps with memory overhead and constrained systems (like a laptop),
+    # otherwise you'll get an out-of-memory error
+    chunk_size = 10
+
+    # the next several print statement will print out a progress bar, FYI
+    print("/] 0%", end='', flush=True)
+    for idx, chunk in chunk_list(docs, chunk_size):
+        db.add_documents(chunk)
+        print("\r" + "/" * max(1,int(idx / record_count * 100/2)), end='', flush=True)
+        print(f"] {int(idx / record_count * 100)}%", end="", flush=True)
+    print("\r" + "/" * int(100/2), end='', flush=True)
+    print(f"] 100%", end='', flush=True)
+
     if VERBOSE:
         end_time = time.time()
-        print(f"Encoding finished, {end_time - start_time}s elapsed\n")
+        print("")
+        print(f"Encoding finished, {end_time - start_time}s elapsed")
+
 else:
     db = PGVector(
         collection_name=COLLECTION_NAME,
@@ -133,17 +153,18 @@ else:
 
 # store.add_documents(split_docs[0:5])
 similarity_search_term = "Accessing Raspberry Pi"
+print(f"Searching similarity with '{similarity_search_term}'")
+
 if VERBOSE:
     start_time = time.time()
     print(f"\nStarting similarity search.")
-print(f"Searching similarity with '{similarity_search_term}'")
 
 docs_with_score = db.similarity_search_with_score(similarity_search_term)
-if VERBOSE:
-    end_time = time.time()
-    print(f"Search finished: {end_time - start_time}s elapsed\n")
 
 if VERBOSE:
+    end_time = time.time()
+    elapsed = end_time - start_time
+    print(f"Search finished: {elapsed:.2f}s elapsed ({elapsed/record_count:.2f} sec/record)\n")
     print("Results:")
     for doc, score in docs_with_score[:3]:
         print("-" * 80)

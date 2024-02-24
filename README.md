@@ -51,3 +51,4 @@ python3 embed.py --verbose --embed --limit 100
 ```
 
 ...but increase your limit appropriately sized for your wordpress blog. No problem if the number is larger than the number of entries - it's smart enough to import up to the max record count.
+
