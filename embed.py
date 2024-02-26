@@ -12,21 +12,23 @@ from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.document_transformers import Html2TextTransformer
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores.pgvector import PGVector
 
-from utils import chunk_list
+from utils import embeddings  # HuggingFaceBgeEmbeddings
+from utils import PG_CONNECTION_STRING, chunk_list
 
 load_dotenv()
 
 parser = argparse.ArgumentParser(description='Information retrieval from blog archives')
 parser.add_argument('--posts-json', type=str, help='Path to posts json file', required=False)
+
+parser.add_argument('--collection', default=os.environ.get("PGVECTOR_COLLECTION_NAME", "web_content"), type=str, help='Collection name to use in the DB store. Only change if you need something specific', required=False)
+
 parser.add_argument('--limit', default=1, type=int, help='limit to first N posts, choose between', required=False)
 parser.add_argument('--embed', action='store_true', help='Perform embedding, wiping all previous embedding from the DB and starting fresh', required=False)
-parser.add_argument('--verbose', action='store_true', help='Verbose output - provide more output than usual. May be helpful.', required=False)
+parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output - provide more output than usual. May be helpful.', required=False)
 
 args = parser.parse_args()
-
 if args.limit < 1:
     print("Please specify a post limit of 1 or more")
     exit(1)
@@ -51,10 +53,11 @@ if posts_path == "":
 elif args.posts_json is None:
     posts_path = "data/posts.json"
 
+db_collection = args.collection
+
 ## Load posts data into pandas
 df = pd.read_json(posts_path)
 
-desired_xform = df.iloc[0].content['rendered']
 def extract_rendered_title(row):
     return row['title']['rendered']
 df['title'] = df.apply(extract_rendered_title, axis=1)
@@ -86,24 +89,15 @@ split_docs = text_splitter.transform_documents(docs_transformed_html)
 
 
 ## Embedding
-embeddings = HuggingFaceBgeEmbeddings()
 
+# embeddings are imported, used across scripts
 
-CONNECTION_STRING = PGVector.connection_string_from_db_params(
-    driver="psycopg2",
-    host=os.environ.get("PGVECTOR_HOST", "localhost"),
-    port=int(os.environ.get("PGVECTOR_PORT", "5432")),
-    database=os.environ.get("PGVECTOR_DATABASE", "blogvector"),
-    user=os.environ.get("PGVECTOR_USER", "postgres"),
-    password=os.environ.get("PGVECTOR_PASSWORD", "postgres"),
-)
-
-
+connection_string = PG_CONNECTION_STRING
 
 # The name of the collection to use. (default: langchain) NOTE: This is not the name of the table, but the name of the collection. The tables will be created when initializing the store (if not exists) So, make sure the user has the right permissions to create tables.
-COLLECTION_NAME = "web_content"
+
 if VERBOSE:
-    print(f"Creating connection to database with collection_name={COLLECTION_NAME}")
+    print(f"Creating connection to database with collection_name={db_collection}")
 
 if EMBED:
     record_count = min(RECORD_LIMIT, len(docs))
@@ -120,8 +114,8 @@ if EMBED:
     db = PGVector.from_documents(
         embedding=embeddings,
         documents = [], # Will load in batches below for status
-        collection_name=COLLECTION_NAME,
-        connection_string=CONNECTION_STRING,
+        collection_name=db_collection,
+        connection_string=connection_string,
         pre_delete_collection=EMBED,
     )
 
@@ -146,8 +140,8 @@ if EMBED:
 
 else:
     db = PGVector(
-        collection_name=COLLECTION_NAME,
-        connection_string=CONNECTION_STRING,
+        collection_name=db_collection,
+        connection_string=connection_string,
         embedding_function=embeddings,
     )
 
