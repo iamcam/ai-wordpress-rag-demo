@@ -16,8 +16,8 @@ from langchain_openai import ChatOpenAI
 
 from utils import PG_CONNECTION_STRING, embeddings
 
-set_debug(True)
-set_verbose(True)
+# set_debug(True)
+
 
 load_dotenv()
 
@@ -37,6 +37,8 @@ VERBOSE = args.verbose
 if VERBOSE:
     print(f"{args}\n")
 
+set_verbose(VERBOSE) # langchain verbosity
+
 db_collection = args.collection
 passed_query = args.query
 
@@ -54,26 +56,80 @@ store = PGVector(
 )
 retriever = store.as_retriever()
 
-# Prompt Template for the LM
-template = """Answer the question based only on the following context:
-{context}
+#####################################################################
+# Prompting
 
-Question: {question}
-"""
-prompt = ChatPromptTemplate.from_template(template)
+## Document Prompt, for inclusion
+from operator import itemgetter
 
-# model creation - https://python.langchain.com/docs/integrations/llms/huggingface_pipelines#model-loading
-# model_name = "Llama-2-13B-chat-GGML" # HuggingFace/TheBloke
-# model_name = "gpt2"
+from langchain.prompts.prompt import PromptTemplate
+from langchain_core.prompts import format_document
+from langchain_core.runnables import RunnableParallel
 
 model = ChatOpenAI(openai_api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Chain - No docs returned, just answers
-chain = (
-    {"context": retriever, "question": RunnablePassthrough()}
-    | prompt
-    | model
-    | StrOutputParser()
-)
+_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in US English.
 
-response_dict = chain.invoke(passed_query)
+Follow Up Input: {question}
+"""
+
+template = """Answer the question based only on the following context:
+{context}
+
+Question: {question}"""
+
+CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_template)
+DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
+ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
+
+# Combine relevant documents into the context for the requested question
+def _combine_documents(
+    docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
+):
+    doc_strings = [format_document(doc, document_prompt) for doc in docs]
+    return document_separator.join(doc_strings)
+
+# The question alone
+standalone_question = {
+    "standalone_question": {
+        "question": lambda x: x["question"],
+    }
+    | CONDENSE_QUESTION_PROMPT
+    | ChatOpenAI(temperature=0)
+    | StrOutputParser(),
+}
+
+retrieved_docs = {
+    "docs": itemgetter("standalone_question") | retriever ,
+    "question": lambda x: x["standalone_question"]
+}
+
+final_inputs = {
+    "context": lambda x: _combine_documents(x["docs"]),
+    "question": itemgetter("question"),
+}
+
+answer = {
+    "answer": final_inputs | ANSWER_PROMPT | ChatOpenAI(),
+    "docs": itemgetter("docs")
+}
+# (Standalone) Question...
+#   ==> Add context of retrieved docs from retriever
+#   ==> Combine
+final_chain = RunnablePassthrough() | standalone_question | retrieved_docs | answer
+
+inputs = {"question": passed_query}
+result = final_chain.invoke(inputs)
+
+print(f"\n❓ '{passed_query}'", end="\n\n")
+print("*" * 80)
+print("💡 " + result['answer'].content)
+
+print("- " * 15, end="")
+print(f"Supporing Docs", end="")
+print("- " * 15)
+
+for (idx, doc) in enumerate(result["docs"]):
+    print(f"\t🥝 {doc.metadata['title']} 🔗 {doc.metadata['link']}")
+
+print("*" * 80)
