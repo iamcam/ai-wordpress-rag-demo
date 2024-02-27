@@ -16,10 +16,9 @@ from langchain_openai import ChatOpenAI
 
 from utils import PG_CONNECTION_STRING, embeddings
 
-# set_debug(True)
-
-
 load_dotenv()
+
+# set_debug(True)
 
 ####################################
 # Set up cli args
@@ -68,17 +67,11 @@ from langchain_core.runnables import RunnableParallel
 
 model = ChatOpenAI(openai_api_key=os.environ.get("OPENAI_API_KEY"))
 
-_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in US English.
-
-Follow Up Input: {question}
-"""
-
 template = """Answer the question based only on the following context:
 {context}
 
 Question: {question}"""
 
-CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_template)
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
 ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
 
@@ -89,45 +82,34 @@ def _combine_documents(
     doc_strings = [format_document(doc, document_prompt) for doc in docs]
     return document_separator.join(doc_strings)
 
-# The question alone
-standalone_question = {
-    "standalone_question": {
-        "question": lambda x: x["question"],
-    }
-    | CONDENSE_QUESTION_PROMPT
-    | ChatOpenAI(temperature=0)
-    | StrOutputParser(),
-}
+# Pass the question into the retriever to return similar results
+retrieved_docs = RunnableParallel({
+    "docs": itemgetter("question") | retriever ,
+    "question": lambda x: x["question"]
+})
 
-retrieved_docs = {
-    "docs": itemgetter("standalone_question") | retriever ,
-    "question": lambda x: x["standalone_question"]
-}
+# take all the docs from the prior step (which includes the question --> retriever --> relevant docs)
 
-final_inputs = {
+context_builder = {
     "context": lambda x: _combine_documents(x["docs"]),
     "question": itemgetter("question"),
 }
-
 answer = {
-    "answer": final_inputs | ANSWER_PROMPT | ChatOpenAI(),
+    "answer": context_builder | ANSWER_PROMPT | model,
     "docs": itemgetter("docs")
 }
-# (Standalone) Question...
-#   ==> Add context of retrieved docs from retriever
-#   ==> Combine
-final_chain = RunnablePassthrough() | standalone_question | retrieved_docs | answer
 
-inputs = {"question": passed_query}
-result = final_chain.invoke(inputs)
+chain = (retrieved_docs | answer)
+result = chain.invoke({"question":passed_query})
 
+####### Formatted output
 print(f"\n❓ '{passed_query}'", end="\n\n")
 print("*" * 80)
 print("💡 " + result['answer'].content)
 
-print("- " * 15, end="")
+print("\n" + "- " * 2, end="")
 print(f"Supporing Docs", end="")
-print("- " * 15)
+print("- " * 30)
 
 for (idx, doc) in enumerate(result["docs"]):
     print(f"\t🥝 {doc.metadata['title']} 🔗 {doc.metadata['link']}")
