@@ -12,6 +12,8 @@ RAG makes use of two components: a retrieval system and a generative language mo
 
 This is a fairly easy project to get up and running...
 
+## Setup
+
 First set up the project's virtual environment and activate it
 
 ```sh
@@ -24,7 +26,7 @@ You may install all the dependencies for this project by using the `requirements
 ```sh
 pip install -r requirements.txt
 ```
-# Environment
+## Environment
 
 Create a `.env` file using `env.example` as a guide.
 
@@ -34,7 +36,7 @@ cp env.example .env
 
 This will be important for downloading your wordpress data. Make sure to copy your Wordpress username, application password, and blog domain into the `.env`. NOTE: This assume the blog is at the root path.
 
-# Loading Wordpress Data
+## Loading Wordpress Data
 
 ```sh
 pip install --upgrade python-dotenv requests pandas langchain langchain_community html2text sentence_transformers
@@ -46,7 +48,7 @@ Download the wordpress content to the `./data` directory (this assumes your blog
 python3 wordpress-dl.py
 ```
 
-# PostgreSQL / PGVector
+## PostgreSQL / PGVector
 
 PGVector is used for storing and query text embeddings (vectors) in a Postgresql database. One benefit of PGVector is that it can be added to existing database systems and does not require proprietary third-party products.
 
@@ -64,7 +66,7 @@ To run the docker image in `./postgres`:
 docker compose up
 ```
 
-# Run Embeddings
+## Run Embeddings
 
 Run the embeddings script to take the wordpress download and save embeddings to the postgres database. This may take some time. _If you want to insert data into the database, that is, wipe and start with clean data, pass the `--embed` CLI argument:
 
@@ -84,11 +86,11 @@ python3 embed.py --verbose --embed --limit 100
 
 ...but increase your limit appropriately sized for your wordpress blog. No problem if the number is larger than the number of entries - it's smart enough to import up to the max record count.
 
-# Query Your Data
+## Query Your Data
 
 This repo demonstrates both local and api-based use cases. One of the benefits of a locally-run model is that your data stays private and will not be used for training others' models. Furthermore, there can be some performance gains by keeping queries local to a server or network, not does it does not incur API usage costs on self-hosted systems. On the other hand, API usage may be desired, as OpenAI has much larger context windows than the model used in this project, and the OpenAI models can be quite good.
 
-## Using HuggingFace Local Pipelines (Default)
+### Using HuggingFace Local Pipelines (Default)
 
 Local language model usage will need the `trsnformers` python package and pytorch (`torch`)
 
@@ -108,7 +110,7 @@ This command will download the model to the user account's cache director, and w
 
 Once the model is downloaded, you may run local inference, which is the default option. See the next section, **Query** for instructions.
 
-## Using OpenAI API
+### Using OpenAI API
 
 Install required for OpenAI API usage
 
@@ -118,19 +120,19 @@ pip install langchain_openai
 
 Ensure you have your OpenAI API key saved to your `.env` file. You can configure it in the [OpenAI Platform API Key tab](https://platform.openai.com/api-keys): `OPENAI_API_KEY="...`
 
-## Using LLM and Document Data
+### Using LLM and Document Data
 
 Documents (embedded and retrieved, btw) have the following general structure in this project.
 
 ```
-# document
-    # page_content
-    # metadata
-        # id
-        # link
-        # title
-        # categories
-        # tags
+## document
+    ## page_content
+    ## metadata
+        ## id
+        ## link
+        ## title
+        ## categories
+        ## tags
 ```
 
 Results are often returned as a `List` of tuples (idx, Document), so it's appropriate to enumerate over the list:
@@ -141,12 +143,20 @@ for (idx, doc) in enumerate(results["docs]):
 ```
 Most useful data for augmenting the LLM responses will be included in the `metadata` property, a dictionary of data fed in during embedding.
 
-# Query
+## Query
 
-Running queries from the CLI is simple:
+Running queries from the CLI is simple..
+
+...local model:
 
 ```sh
-python3 query.py --query "How do you use swift to make LEDS blink on a raspberry pi?"
+python3 query.py --query "Does RaspberryPi have GPIO that swift can use?"
+```
+
+...using OpenAI:
+
+```sh
+python3 query.py --query "Does RaspberryPi have GPIO that swift can use?" --use-api
 ```
 
 After a few moments, expect to see a response like this,
