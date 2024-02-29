@@ -3,39 +3,27 @@
 import time
 
 script_start = time.time()
-print(f"Script starting at {script_start:.2f}")
-tt = 0
+
+
 import argparse
 import os
-
-print(f"\t: 0.  {time.time() - script_start :.2f}s")
 
 # There's a warning/error thrown, this will resolve it
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from dotenv import load_dotenv
-from langchain.globals import set_debug, set_verbose
-from langchain_community.vectorstores.pgvector import PGVector
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-
-print(f"\t: 1.  {time.time() - script_start :.2f}s")
-
 from operator import itemgetter
 
+from dotenv import load_dotenv
+from langchain.globals import set_debug, set_verbose
 from langchain.prompts.prompt import PromptTemplate
-from langchain_core.prompts import format_document
+from langchain_community.vectorstores.pgvector import PGVector
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, format_document
 from langchain_core.runnables import RunnableParallel
-
-print(f"\t: 2a. {time.time() - script_start :.2f}s")
 
 from utils import PG_CONNECTION_STRING, embeddings
 
-print(f"\t: 2b. {time.time() - script_start :.2f}s")
-
 load_dotenv()
-print(f"\t: 3.  {time.time() - script_start :.2f}s")
-
 # set_debug(True)
 
 ####################################
@@ -49,7 +37,6 @@ parser.add_argument('--use-api', action='store_true', help='Use OpenAI/ChatGPT A
 parser.add_argument('--query', '-q', default="What is RaspberryPi?", type=str, help='Curious minds want to know...?', required=False)
 
 args = parser.parse_args()
-print(f"\t: 4.  {time.time() - script_start :.2f}s")
 
 VERBOSE = args.verbose
 if VERBOSE:
@@ -69,16 +56,9 @@ if USE_API:
 
 else:
     from langchain.callbacks.manager import CallbackManager
-    print(f"\t: 5a. {time.time() - script_start :.2f}s")
     from langchain.callbacks.streaming_stdout import \
         StreamingStdOutCallbackHandler
-    print(f"\t: 5b. {time.time() - script_start :.2f}s")
     from langchain_community.llms.llamacpp import LlamaCpp
-    print(f"\t: 5c. {time.time() - script_start :.2f}s")
-
-
-imports_done = time.time()
-print(f"Imports Complete: {imports_done - script_start :.2f}s")
 
 ####################################
 # Vector Store + Retriever
@@ -115,14 +95,12 @@ if USE_API:
 
 else:
     print("🤖 Using local inference")
-    callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
     model = LlamaCpp(
         model_path="./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
         temperature=0.75,
-        max_tokens=1000,
+        max_tokens=2000,
         top_p=1,
-        callback_manager=callback_manager,
         verbose=VERBOSE,  # Verbose is required to pass to the callback manager
     )
 
@@ -179,8 +157,6 @@ answer = {
 chain = (retrieved_docs | answer)
 result = chain.invoke({"question":passed_query})
 
-print(f"Query Chain Complete: {time.time() - imports_done :.2f}s (since script start)")
-
 if VERBOSE:
     print(f"RESULT: {result}")
 
@@ -202,8 +178,12 @@ else:
 print("💡 " + response_anser)
 
 print("\n" + "- " * 2, end="")
-print(f"Supporing Docs", end="")
+print(f"Supporing Docs", end=" ")
 print("- " * 30)
 
 for (idx, doc) in enumerate(result["docs"]):
     print(f"\t🥝 {doc.metadata['title']} 🔗 {doc.metadata['link']}")
+
+print("\n" + "~ "* 5 + f"Finished in {time.time() - script_start :.2f}s " + "~ "* 10 + "\n")
+
+print("*" * 80)
