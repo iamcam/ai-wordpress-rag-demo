@@ -1,0 +1,13 @@
+python-dotenv
+requests
+pgvector
+psycopg2-binary
+pandas
+langchain
+langchain_community
+langchain_openai
+sentence_transformers
+html2text
+llama-cpp-python
+transformers
+torch

@@ -124,6 +124,8 @@ if EMBED:
     # otherwise you'll get an out-of-memory error
     chunk_size = 10
 
+    ###############################################
+    ## Progress Bar /////////////////]
     # the next several print statement will print out a progress bar, FYI
     print("/] 0%", end='', flush=True)
     for idx, chunk in chunk_list(docs, chunk_size):
