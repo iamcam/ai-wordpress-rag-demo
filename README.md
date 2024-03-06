@@ -177,3 +177,5 @@ After a few moments, expect to see a response like this,
 
 ********************************************************************************
 ```
+
+There are additional arguments that can be helpful when testing your data and models. run `python3 query.py --help` for more options.

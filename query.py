@@ -35,6 +35,7 @@ parser.add_argument('--collection',  default=os.environ.get("PGVECTOR_COLLECTION
 parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output - provide more output than usual. May be helpful.', required=False)
 parser.add_argument('--use-api', action='store_true', help='Use OpenAI/ChatGPT APIs instead of local inference. An OpenAI API key is required (see README for details)', required=False)
 parser.add_argument('--query', '-q', default="What is RaspberryPi?", type=str, help='Curious minds want to know...?', required=False)
+parser.add_argument('--temperature', '-t', default=0.75, type=float, help='Set the temperature for the model. Values typically range from 0 (more consistent/less creative) to 1 (more diverse and creative)', required=False)
 
 args = parser.parse_args()
 
@@ -47,6 +48,7 @@ set_verbose(VERBOSE) # langchain verbosity
 db_collection = args.collection
 passed_query = args.query
 USE_API = args.use_api
+use_temp = args.temperature
 
 ####################################
 # Conditional Imports
@@ -86,7 +88,7 @@ user_instruction = "Question: {question}"
 
 if USE_API:
     print("🤖 Using OpenAI API")
-    model = ChatOpenAI(openai_api_key=os.environ.get("OPENAI_API_KEY"), temperature=0.75)
+    model = ChatOpenAI(openai_api_key=os.environ.get("OPENAI_API_KEY"), temperature=use_temp)
 
     # OpenAI templates are straightforward, system instruction + Question
     template = f"""{system_instruction}
@@ -98,7 +100,7 @@ else:
 
     model = LlamaCpp(
         model_path="./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-        temperature=0.75,
+        temperature=use_temp,
         max_tokens=2000,
         top_p=1,
         verbose=VERBOSE,  # Verbose is required to pass to the callback manager
