@@ -21,17 +21,13 @@ load_dotenv()
 
 parser = argparse.ArgumentParser(description='Information retrieval from blog archives')
 parser.add_argument('--posts-json', type=str, help='Path to posts json file', required=False)
-
 parser.add_argument('--collection', default=os.environ.get("PGVECTOR_COLLECTION_NAME", "web_content"), type=str, help='Collection name to use in the DB store. Only change if you need something specific', required=False)
-
-parser.add_argument('--limit', default=1, type=int, help='limit to first N posts, choose between', required=False)
+parser.add_argument('--limit', type=int, help='Limit to the first N blog posts to embed. Useful for testing', required=False)
 parser.add_argument('--embed', action='store_true', help='Perform embedding, wiping all previous embedding from the DB and starting fresh', required=False)
 parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output - provide more output than usual. May be helpful.', required=False)
 
 args = parser.parse_args()
-if args.limit < 1:
-    print("Please specify a post limit of 1 or more")
-    exit(1)
+
 RECORD_LIMIT = args.limit
 
 print("-" * 80)
@@ -75,20 +71,28 @@ docs = post_loader.load()[:RECORD_LIMIT]
 html2text = Html2TextTransformer()
 docs_transformed_html = html2text.transform_documents(docs)
 
+if VERBOSE:
+    print(docs_transformed_html[:1])
+
 ## Split into smaller chunks
 
 # Recommended for generic text, splitting in order until chunks are small enough
-text_splitter = RecursiveCharacterTextSplitter(
-    # Set a really small chunk size, just to show.
-    chunk_size=100,
-    chunk_overlap=20,
-    length_function=len,
-    is_separator_regex=False,
-)
-split_docs = text_splitter.transform_documents(docs_transformed_html)
+# text_splitter = RecursiveCharacterTextSplitter(
+#     chunk_size=250,
+#     chunk_overlap=20,
+#     length_function=len,
+#     is_separator_regex=False,
+# )
+# split_docs = text_splitter.transform_documents(docs_transformed_html)
 
+# if VERBOSE:
+#     print("First 3 docs")
+#     print(split_docs[:3])
 
 ## Embedding
+
+# Using the full document rather than partial, as the returned results are helpful as full articles
+docs_to_embed = docs_transformed_html[:RECORD_LIMIT]
 
 # embeddings are imported, used across scripts
 
@@ -100,7 +104,7 @@ if VERBOSE:
     print(f"Creating connection to database with collection_name={db_collection}")
 
 if EMBED:
-    record_count = min(RECORD_LIMIT, len(docs))
+    record_count = len(docs_to_embed)
 
     print(f"Importing {record_count} records")
     if VERBOSE:
@@ -127,12 +131,15 @@ if EMBED:
     ###############################################
     ## Progress Bar /////////////////]
     # the next several print statement will print out a progress bar, FYI
+    if VERBOSE:
+        print(f"Doc Size: {len(docs_to_embed)}\tChunk Size: {chunk_size}")
+
     print("/] 0%", end='', flush=True)
-    for idx, chunk in chunk_list(docs, chunk_size):
+    for idx, chunk in chunk_list(docs_to_embed, chunk_size):
         db.add_documents(chunk)
-        print("\r" + "/" * max(1,int(idx / record_count * 100/2)), end='', flush=True)
+        print("\r" + "/" * max(1,int(idx / record_count * 100)), end='', flush=True)
         print(f"] {int(idx / record_count * 100)}%", end="", flush=True)
-    print("\r" + "/" * int(100/2), end='', flush=True)
+    print("\r" + "/" * int(100), end='', flush=True)
     print(f"] 100%", end='', flush=True)
 
     if VERBOSE:
@@ -149,7 +156,7 @@ else:
 
 # store.add_documents(split_docs[0:5])
 similarity_search_term = "Accessing Raspberry Pi"
-print(f"Searching similarity with '{similarity_search_term}'")
+print(f"\n🍋 Searching similarity with 👉 '{similarity_search_term}'")
 
 if VERBOSE:
     start_time = time.time()
@@ -169,4 +176,4 @@ if VERBOSE:
         print("-" * 80)
 
 # TODO: Consider adding index indexes (HNSW, IVFFLAT)
-print(db.CollectionStore.__tablename__)
+# print(f"Table name: {db.CollectionStore.__tablename__}")

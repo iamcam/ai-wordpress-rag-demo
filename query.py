@@ -34,8 +34,8 @@ parser = argparse.ArgumentParser(description='Information retrieval from blog ar
 parser.add_argument('--collection',  default=os.environ.get("PGVECTOR_COLLECTION_NAME"), type=str, help='Collection name to use in the DB store. Only change if you need something specific', required=False)
 parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output - provide more output than usual. May be helpful.', required=False)
 parser.add_argument('--use-api', action='store_true', help='Use OpenAI/ChatGPT APIs instead of local inference. An OpenAI API key is required (see README for details)', required=False)
-parser.add_argument('--query', '-q', default="What is RaspberryPi?", type=str, help='Curious minds want to know...?', required=False)
 parser.add_argument('--temperature', '-t', default=0.75, type=float, help='Set the temperature for the model. Values typically range from 0 (more consistent/less creative) to 1 (more diverse and creative)', required=False)
+parser.add_argument('--query', '-q', default="What is RaspberryPi?", type=str, help='Curious minds want to know...?', required=False)
 
 args = parser.parse_args()
 
@@ -96,13 +96,13 @@ if USE_API:
     {user_instruction}"""
 
 else:
-    print("🤖 Using local inference")
+    print("\n🤖 Using local inference")
 
     model = LlamaCpp(
         model_path="./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
         temperature=use_temp,
-        max_tokens=2000,
-        top_p=1,
+        # max_tokens=2000,
+        # top_p=1,
         verbose=VERBOSE,  # Verbose is required to pass to the callback manager
     )
 
@@ -185,7 +185,6 @@ print("- " * 30)
 
 for (idx, doc) in enumerate(result["docs"]):
     print(f"\t🥝 {doc.metadata['title']} 🔗 {doc.metadata['link']}")
-
 print("\n" + "~ "* 5 + f"Finished in {time.time() - script_start :.2f}s " + "~ "* 10 + "\n")
 
 print("*" * 80)
