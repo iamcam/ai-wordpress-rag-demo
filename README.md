@@ -2,7 +2,7 @@
 
 This small project aims to incorporate WordPress blog entries into a knowledge base that utilizes Retrieval-Augmented Generation (RAG) techniques.
 
-The premise of this project is simple - a series of scripts will perform specific actions. Each script is self-contained, which helps demonstrate each action within its own context, relatively simply.
+The premise of this project is simple - a series of scripts will perform specific actions via the command line. Each script is self-contained, which helps demonstrate each action within its own context, relatively simply.
 
 By default, the included scripts use free and open-source libraries and models, though an option to use OpenAI's LLMs is available if you have access. This example should be able to run on on CPU if you don't have a compatible GPU, but YMMV.
 
