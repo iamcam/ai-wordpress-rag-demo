@@ -98,12 +98,12 @@ Local language model usage will need the `trsnformers` python package and pytorc
 pip install transformers torch llama-cpp-python
 ```
 
-Next, download the model used in this offline approach. Because language models can be large (several GB), I chose a smaller Llama model that demonstrates. Even smaller models can be used, but oftentimes at the limit of context windows, which can be alleviated, but outside the scope of this project. This project uses `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF` (`Q4_K_M`)
+Next, download the model used in this offline approach. Because language models can be large (several GB), I chose a smaller Llama model that demonstrates. Even smaller models can be used, but oftentimes at the limit of context windows, which can be alleviated, but outside the scope of this project. This project uses `TheBloke/Llama-2-7b-Chat-GGUF` (`Q4_K_M`)
 
 (If you don't have `huggingface-cli` installed, you can find [details here](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli)).
 
 ```sh
-huggingface-cli download TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf --local-dir ./models/ --local-dir-use-symlinks True
+huggingface-cli download TheBloke/Llama-2-7b-Chat-GGUF llama-2-7b-chat.Q4_K_M.gguf --local-dir ./models/ --local-dir-use-symlinks True
 ```
 
 This command will download the model to the user account's cache director, and will symlink from the models directory.

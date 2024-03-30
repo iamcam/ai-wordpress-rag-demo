@@ -21,7 +21,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, format_document
 from langchain_core.runnables import RunnableParallel
 
-from utils import PG_CONNECTION_STRING, embeddings
+from utils import PG_CONNECTION_STRING, embeddings, dedupe_docs
 
 load_dotenv()
 # set_debug(True)
@@ -99,20 +99,22 @@ else:
     print("\n🤖 Using local inference")
 
     model = LlamaCpp(
-        model_path="./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        model_path="./models/llama-2-7b-chat.Q4_K_M.gguf",
         temperature=use_temp,
-        # max_tokens=2000,
+        model_kwargs={
+            "context_window":3900,
+            "max_new_tokens":20,
+        },
+        max_tokens=4096,
         # top_p=1,
         verbose=VERBOSE,  # Verbose is required to pass to the callback manager
     )
 
     # Llama uses a bit more structured query templates, but otherwise the relevant information is the same as OpenAI's above
-    template = f"""<|im_start|>system
+    template = f"""<s>[INST] <<SYS>>
     {system_instruction}
-    <|im_end|>
-    <|im_start|>user
-    {user_instruction}<|im_end|>
-    <|im_start|>assistant
+    <</SYS>>
+    {user_instruction} [/INST]
     """
 
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
@@ -122,19 +124,10 @@ ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
 def _combine_documents(
     docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
 ):
-    # ideally this uses actual tokens. OpenAI seems to be able to take the full text,
-    # but TinyLlama needs shorter - max context size is 512, but the max chars is likely
-    # several times larger. Look into `LlamaTokenizer` from the HF transformers package
-    # (outside the scope of this demonstration, IMO).
-    if USE_API:
-        part = None
-    else:
-        maxchars = 1200 #guestimage ~3chars/token avg, leaving some room for query text etc
-        part = int(maxchars/len(docs))
 
     doc_strings = []
     for doc in docs:
-        formatted_doc = format_document(doc, document_prompt)[:part]
+        formatted_doc = format_document(doc, document_prompt)
         doc_strings.append(formatted_doc)
     return document_separator.join(doc_strings)
 
@@ -153,10 +146,16 @@ context_builder = {
 
 answer = {
     "answer": context_builder | ANSWER_PROMPT | model | StrOutputParser(),
-    "docs": itemgetter("docs")
+    "docs": lambda x: dedupe_docs(x["docs"])
 }
 
 chain = (retrieved_docs | answer)
+
+if VERBOSE:
+    chain.get_graph().print_ascii()
+
+print("Processing.....")
+
 result = chain.invoke({"question":passed_query})
 
 if VERBOSE:
@@ -173,11 +172,11 @@ print(f"\n❓ '{passed_query}'", end="\n\n")
 print("- " * 40)
 
 if hasattr(result['answer'], "content"):
-    response_anser = result['answer'].content
+    response_answer = result['answer'].content
 else:
-    response_anser = result['answer']
+    response_answer = result['answer']
 
-print("💡 " + response_anser)
+print("💡 " + response_answer)
 
 print("\n" + "- " * 2, end="")
 print(f"Supporing Docs", end=" ")

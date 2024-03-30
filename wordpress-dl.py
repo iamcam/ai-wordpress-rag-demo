@@ -10,7 +10,7 @@ load_dotenv()
 wordpress_user = os.getenv('WORDPRESS_APPLICATION_USER')
 wordpress_password = os.getenv('WORDPRESS_APPLICATION_PASS')
 wordpress_domain = os.getenv('WORDPRESS_DOMAIN')
-wp_root_path = "wp-json/wp/v2"
+wp_root_path = os.getenv('WP_ROOT_PATH', "wp-json/wp/v2")
 
 wordpress_credentials = wordpress_user + ":" + wordpress_password
 wordpress_token = base64.b64encode(wordpress_credentials.encode())

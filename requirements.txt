@@ -11,3 +11,4 @@ html2text
 llama-cpp-python
 transformers
 torch
+grandalf
