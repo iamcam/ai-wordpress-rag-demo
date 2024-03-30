@@ -4,3 +4,4 @@ virtualenv
 data
 postgres-data
 models
+__pycache__
