@@ -20,8 +20,12 @@ from langchain_community.vectorstores.pgvector import PGVector
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, format_document
 from langchain_core.runnables import RunnableParallel
+from langchain_core.prompt_values import ChatPromptValue
+from langchain_core.documents import Document
+from langchain_community.document_transformers import Html2TextTransformer
+from langchain_core.language_models.llms import LLM
 
-from utils import PG_CONNECTION_STRING, embeddings, dedupe_docs
+from utils import PG_CONNECTION_STRING, embeddings, dedupe_docs, fetch_document
 
 load_dotenv()
 # set_debug(True)
@@ -76,6 +80,8 @@ retriever = store.as_retriever()
 ####################################
 # Prompting
 ####################################
+MAX_TOKENS = 4096
+CONTEXT_WINDOW = 512
 
 # Primes the LM and gives the context via the documents returned from the retriever
 system_instruction = """Answer the question based only on the following context:
@@ -85,11 +91,11 @@ system_instruction = """Answer the question based only on the following context:
 # Simply user instruction
 user_instruction = "Question: {question}"
 
+## Llama 2 is 4096, according to docs, OpenAI/GPT-4 is much more
 
 if USE_API:
     print("🤖 Using OpenAI API")
     model = ChatOpenAI(openai_api_key=os.environ.get("OPENAI_API_KEY"), temperature=use_temp)
-
     # OpenAI templates are straightforward, system instruction + Question
     template = f"""{system_instruction}
 
@@ -102,10 +108,10 @@ else:
         model_path="./models/llama-2-7b-chat.Q4_K_M.gguf",
         temperature=use_temp,
         model_kwargs={
-            "context_window":3900,
+            "context_window":MAX_TOKENS,
             "max_new_tokens":20,
         },
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         # top_p=1,
         verbose=VERBOSE,  # Verbose is required to pass to the callback manager
     )
@@ -120,16 +126,42 @@ else:
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
 ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
 
+token_counts = {"documents": None, "query": None, "response": None}
+
 # Combine relevant documents into the context for the requested question
+# i
 def _combine_documents(
     docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
-):
-
+) -> str:
     doc_strings = []
+
     for doc in docs:
-        formatted_doc = format_document(doc, document_prompt)
+        if False: #full documents overwhelm the LM
+            doc_body = fetch_document("data/posts.json", doc.metadata['id'])
+            full_doc = Document(page_content=doc_body, metadata=doc.metadata)
+            html2text = Html2TextTransformer()
+            transformed = html2text.transform_documents([full_doc])
+
+            formatted_doc = format_document(transformed[0], document_prompt)
+        else:
+            formatted_doc = format_document(doc, document_prompt)
         doc_strings.append(formatted_doc)
-    return document_separator.join(doc_strings)
+
+    joined_docs = document_separator.join(doc_strings)
+
+    if model.get_num_tokens:
+        num_tokens = model.get_num_tokens(joined_docs)
+        if VERBOSE: print(f"🔆🔆 Num Tokens in docs: ({num_tokens})")
+
+        while num_tokens > CONTEXT_WINDOW-25:
+            joined_docs = joined_docs[5:]
+            num_tokens = model.get_num_tokens(joined_docs)
+        token_counts["documents"] = num_tokens
+    else:
+        # severely limits the text, but in absence of token counting, be safe
+        joined_docs = joined_docs[:CONTEXT_WINDOW]
+
+    return joined_docs
 
 # Pass the question into the retriever to return similar results
 retrieved_docs = RunnableParallel({
@@ -146,7 +178,7 @@ context_builder = {
 
 answer = {
     "answer": context_builder | ANSWER_PROMPT | model | StrOutputParser(),
-    "docs": lambda x: dedupe_docs(x["docs"])
+    "docs": lambda x: x["docs"]
 }
 
 chain = (retrieved_docs | answer)
@@ -176,14 +208,24 @@ if hasattr(result['answer'], "content"):
 else:
     response_answer = result['answer']
 
-print("💡 " + response_answer)
+if model.get_num_tokens:
+    token_counts["response"] = model.get_num_tokens(response_answer)
+    token_counts['query'] = model.get_num_tokens(passed_query)
+
+print(f"\t🫧  Query\t({token_counts['query']} tokens)")
+print(f"\t🫧  Documents\t({token_counts['documents']} tokens)")
+print(f"\t🫧  Response\t({token_counts['response']} tokens)")
+print(f"\t🫧  Total\t({token_counts['documents'] + token_counts['response'] + token_counts['query']} tokens)")
+print("\n")
+print(f"💡 {response_answer}")
 
 print("\n" + "- " * 2, end="")
 print(f"Supporing Docs", end=" ")
-print("- " * 30)
+print("- " * 30, end="\n\n")
 
-for (idx, doc) in enumerate(result["docs"]):
+for (idx, doc) in enumerate(dedupe_docs(result["docs"])):
     print(f"\t🥝 {doc.metadata['title']} 🔗 {doc.metadata['link']}")
+
 print("\n" + "~ "* 5 + f"Finished in {time.time() - script_start :.2f}s " + "~ "* 10 + "\n")
 
 print("*" * 80)
